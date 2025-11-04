@@ -1,1 +1,41 @@
-hi
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>StaticQuasar Chat</title>
+    <link rel="icon" href="https://cdn.jsdelivr.net/gh/StaticQuasar931/Images@main/icon.png" />
+    <link rel="manifest" href="./public/manifest.json" />
+    <link rel="stylesheet" href="./assets/styles.css" />
+    <meta name="theme-color" content="#2b2d31" />
+  </head>
+  <body>
+    <div id="app" role="application" aria-label="StaticQuasar Chat">
+      <div id="servers" class="region" aria-label="Servers" role="navigation"></div>
+      <div id="channels" class="region" aria-label="Channels and Direct Messages" role="navigation"></div>
+      <header id="header" role="banner">
+        <div class="title" id="channel-title">Welcome to StaticQuasar Chat</div>
+        <div class="actions" id="header-actions"></div>
+      </header>
+      <main id="main" role="main" aria-live="polite" aria-label="Message feed">
+        <div id="message-list" role="list" aria-live="polite"></div>
+      </main>
+      <aside id="sidebar" role="complementary" aria-label="Members"></aside>
+      <div id="composer" aria-label="Message composer">
+        <button id="emoji-button" aria-label="Open emoji picker">😊</button>
+        <textarea id="message-input" placeholder="Message" aria-multiline="true"></textarea>
+        <input id="file-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden />
+        <button id="upload-button" aria-label="Upload image">📎</button>
+        <button id="send-button" aria-label="Send message">Send</button>
+      </div>
+    </div>
+    <div class="toast-container" aria-live="assertive" aria-atomic="false"></div>
+    <div class="splash-screen" id="splash" hidden>
+      <div>
+        <img src="https://cdn.jsdelivr.net/gh/StaticQuasar931/Images@main/icon.png" alt="StaticQuasar logo" width="96" height="96" />
+        <p>StaticQuasar931 is preparing your chats…</p>
+      </div>
+    </div>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

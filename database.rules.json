@@ -1,0 +1,202 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "public": { ".read": true, ".write": false },
+
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+
+        "displayName": { ".validate": "newData.isString() && newData.val().length <= 64" },
+        "username": { ".validate": "newData.isString() && newData.val().matches(/^[A-Za-z0-9_\\.\\-]{3,32}$/)" },
+        "avatarUrl": { ".validate": "!newData.exists() || newData.isString()" },
+        "email": { ".validate": "!newData.exists() || newData.isString()" },
+        "createdAt": { ".validate": "newData.isNumber()" },
+        "status": { ".validate": "!newData.exists() || newData.val().matches(/^(online|idle|dnd|offline)$/)" },
+
+        "settings": {
+          ".validate": "newData.hasChildren(['theme','notifications','lockOnLogout'])",
+          "theme": { ".validate": "newData.isString()" },
+          "notifications": { ".validate": "newData.isBoolean()" },
+          "lockOnLogout": { ".validate": "newData.isBoolean()" }
+        },
+
+        "friends": {
+          "$friendUid": {
+            ".read": "auth.uid === $uid",
+            ".write": "auth.uid === $uid",
+            ".validate": "newData.hasChildren(['since','status']) && newData.child('status').val().matches(/^(accepted|pending_in|pending_out)$/)"
+          }
+        },
+
+        "blocks": {
+          "$blockedUid": {
+            ".read": "auth.uid === $uid",
+            ".write": "auth.uid === $uid",
+            ".validate": "newData.val() === true"
+          }
+        }
+      }
+    },
+
+    "servers": {
+      "$serverId": {
+        ".read": "auth != null && root.child('servers/' + $serverId + '/members/' + auth.uid).exists()",
+        ".write": "auth != null && root.child('servers/' + $serverId + '/members/' + auth.uid + '/perms/manageServer').val() === true",
+
+        "name": { ".validate": "newData.isString() && newData.val().length <= 64" },
+        "ownerId": { ".validate": "newData.isString()" },
+        "iconUrl": { ".validate": "!newData.exists() || newData.isString()" },
+        "createdAt": { ".validate": "newData.isNumber()" },
+
+        "members": {
+          "$uid": {
+            ".read": "auth != null && root.child('servers/' + $serverId + '/members/' + auth.uid).exists()",
+            ".write": "auth != null && (auth.uid === $uid || root.child('servers/' + $serverId + '/members/' + auth.uid + '/perms/manageMembers').val() === true)",
+            "roles": { ".validate": "newData.isMap()" },
+            "joinedAt": { ".validate": "newData.isNumber()" },
+            "perms": { ".validate": "newData.isMap()" }
+          }
+        },
+
+        "roles": {
+          "$roleId": {
+            ".read": "auth != null && root.child('servers/' + $serverId + '/members/' + auth.uid).exists()",
+            ".write": "auth != null && root.child('servers/' + $serverId + '/members/' + auth.uid + '/perms/manageRoles').val() === true",
+            "name": { ".validate": "newData.isString()" },
+            "perms": { ".validate": "newData.isMap()" }
+          }
+        },
+
+        "channels": {
+          "$channelId": {
+            ".read": "auth != null && root.child('servers/' + $serverId + '/members/' + auth.uid).exists()",
+            ".write": "auth != null && root.child('servers/' + $serverId + '/members/' + auth.uid + '/perms/manageChannels').val() === true",
+            "name": { ".validate": "newData.isString() && newData.val().length <= 64" },
+            "type": { ".validate": "newData.val() === 'text'" },
+            "position": { ".validate": "newData.isNumber()" },
+            "createdAt": { ".validate": "newData.isNumber()" },
+            "permissions": { ".validate": "!newData.exists() || newData.isMap()" },
+            "optionalPasswordHash": { ".validate": "!newData.exists() || newData.isString()" }
+          }
+        }
+      }
+    },
+
+    "channelsMessages": {
+      "$serverId": {
+        "$channelId": {
+          ".read": "auth != null && root.child('servers/' + $serverId + '/members/' + auth.uid).exists()",
+          ".indexOn": ["createdAt"],
+          "$messageId": {
+            ".write": "auth != null && root.child('servers/' + $serverId + '/members/' + auth.uid).exists()",
+            ".validate": "newData.hasChildren(['authorId','content','createdAt']) && newData.child('authorId').val() === auth.uid && newData.child('content').isString() && newData.child('content').val().matches(/^([\\s\\S]){0,4000}$/) && newData.child('createdAt').isNumber() && (!newData.child('attachments').exists() || newData.child('attachments').isList()) && (!newData.child('embeds').exists() || newData.child('embeds').isList())",
+
+            "reactions": {
+              "$emoji": {
+                "$uid": {
+                  ".write": "auth != null && auth.uid === $uid",
+                  ".validate": "newData.val() === true"
+                }
+              }
+            },
+
+            "softDeleted": {
+              ".write": "auth != null && (data.child('authorId').val() === auth.uid || root.child('servers/' + $serverId + '/members/' + auth.uid + '/perms/manageMessages').val() === true)",
+              ".validate": "newData.hasChildren(['by','at']) && newData.child('by').val() === auth.uid && newData.child('at').isNumber()"
+            }
+          }
+        }
+      }
+    },
+
+    "dms": {
+      "$dmId": {
+        ".read": "auth != null && root.child('dms/' + $dmId + '/memberIds/' + auth.uid).val() === true",
+        ".write": "auth != null && root.child('dms/' + $dmId + '/memberIds/' + auth.uid).val() === true",
+        "memberIds": { "$uid": { ".validate": "newData.val() === true" } },
+        "optionalPasswordHash": { ".validate": "!newData.exists() || newData.isString()" },
+        "createdAt": { ".validate": "newData.isNumber()" }
+      }
+    },
+
+    "dmMessages": {
+      "$dmId": {
+        ".indexOn": ["createdAt"],
+        "$messageId": {
+          ".read": "auth != null && root.child('dms/' + $dmId + '/memberIds/' + auth.uid).val() === true",
+          ".write": "auth != null && root.child('dms/' + $dmId + '/memberIds/' + auth.uid).val() === true",
+          ".validate": "newData.hasChildren(['authorId','content','createdAt']) && newData.child('authorId').val() === auth.uid && newData.child('content').isString() && newData.child('content').val().matches(/^([\\s\\S]){0,4000}$/) && newData.child('createdAt').isNumber()",
+          "softDeleted": {
+            ".write": "auth != null && data.child('authorId').val() === auth.uid",
+            ".validate": "newData.hasChildren(['by','at']) && newData.child('by').val() === auth.uid && newData.child('at').isNumber()"
+          }
+        }
+      }
+    },
+
+    "groupDms": {
+      "$groupId": {
+        ".read": "auth != null && root.child('groupDms/' + $groupId + '/memberIds/' + auth.uid).val() === true",
+        ".write": "auth != null && root.child('groupDms/' + $groupId + '/memberIds/' + auth.uid).val() === true",
+        "memberIds": { "$uid": { ".validate": "newData.val() === true" } },
+        "optionalPasswordHash": { ".validate": "!newData.exists() || newData.isString()" },
+        "createdAt": { ".validate": "newData.isNumber()" }
+      }
+    },
+
+    "groupDmMessages": {
+      "$groupId": {
+        ".indexOn": ["createdAt"],
+        "$messageId": {
+          ".read": "auth != null && root.child('groupDms/' + $groupId + '/memberIds/' + auth.uid).val() === true",
+          ".write": "auth != null && root.child('groupDms/' + $groupId + '/memberIds/' + auth.uid).val() === true",
+          ".validate": "newData.hasChildren(['authorId','content','createdAt']) && newData.child('authorId').val() === auth.uid && newData.child('content').isString() && newData.child('content').val().matches(/^([\\s\\S]){0,4000}$/) && newData.child('createdAt').isNumber()",
+          "softDeleted": {
+            ".write": "auth != null && data.child('authorId').val() === auth.uid",
+            ".validate": "newData.hasChildren(['by','at']) && newData.child('by').val() === auth.uid && newData.child('at').isNumber()"
+          }
+        }
+      }
+    },
+
+    "reports": {
+      "$reportId": {
+        ".read": "auth != null && (data.child('reporterId').val() === auth.uid || (data.child('messageRef/serverId').exists() && root.child('servers/' + data.child('messageRef/serverId').val() + '/members/' + auth.uid + '/perms/viewAudit').val() === true))",
+        ".write": "auth != null",
+        ".validate": "newData.hasChildren(['messageRef','reporterId','reason','status','createdAt']) && newData.child('reporterId').val() === auth.uid && newData.child('reason').isString() && newData.child('status').val().matches(/^(open|in_review|closed)$/) && newData.child('createdAt').isNumber()"
+      }
+    },
+
+    "presence": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.hasChildren(['state','updatedAt']) && newData.child('state').val().matches(/^(online|idle|dnd|offline)$/) && newData.child('updatedAt').isNumber()"
+      }
+    },
+
+    "typing": {
+      "$scopeType": {
+        "$scopeId": {
+          "$uid": {
+            ".read": "auth != null",
+            ".write": "auth != null && auth.uid === $uid",
+            ".validate": "newData.val() === true"
+          }
+        }
+      }
+    },
+
+    "invites": {
+      "$inviteId": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        ".validate": "newData.hasChildren(['serverId','creatorId','expiresAt','maxUses','useCount']) && newData.child('creatorId').val() === auth.uid && newData.child('expiresAt').isNumber() && newData.child('maxUses').isNumber() && newData.child('useCount').isNumber()"
+      }
+    }
+  }
+}
