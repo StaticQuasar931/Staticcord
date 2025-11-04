@@ -10,6 +10,7 @@ StaticQuasar Chat is a Firebase powered, Discord-inspired real time client that 
 - Image uploads with Storage validation and Cloud Functions verification
 - Emoji picker, reactions, mentions, quick switcher, hotkeys, and unread indicators
 - Theme toggle (dark by default) with StaticQuasar branding moments
+- Full settings panel with profile, appearance, notification, and security controls
 - Installable PWA manifest and offline shell service worker
 
 ## Project structure
@@ -32,7 +33,7 @@ firebase.json
 3. **Create a Realtime Database** in production mode. Copy and publish `database.rules.json`.
 4. **Enable Cloud Storage**. Upload `storage.rules` as your storage security rules.
 5. *(Optional)* **Set up Firebase Cloud Messaging** and Web Push certificate keys if you plan to enable desktop notifications.
-6. **Configure Firebase SDK**: copy `src/config-template.ts` to `src/config.ts` and fill in your Firebase config (already populated for StaticQuasar931).
+6. **Configure Firebase SDK**: copy `src/config-template.ts` to `src/config.ts` and fill in your Firebase config (the repository includes StaticCord sample credentials as a reference—replace them with your own before deploying).
 7. **Deploy Cloud Functions**:
    ```bash
    cd functions

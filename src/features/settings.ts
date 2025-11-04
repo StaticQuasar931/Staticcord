@@ -1,67 +1,293 @@
 import { createModal } from '../ui/modal.ts';
 import { renderWatermark, setTheme } from '../ui/layout.ts';
 import { getCurrentUser, updateDisplayName, updateUsername, updateSettings } from '../auth/session.ts';
+import { logout } from '../auth/auth.ts';
 import config from '../config.ts';
 import { showToast } from '../ui/toast.ts';
 
 let currentTheme = config.THEME.darkDefault ? 'dark' : 'light';
 
 export function initTheme() {
-  setTheme(currentTheme);
+  applyTheme(currentTheme);
 }
 
 export function toggleTheme() {
-  currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
-  setTheme(currentTheme);
-  const user = getCurrentUser();
-  if (user) {
-    updateSettings({ ...user.profile?.settings, theme: currentTheme });
-  }
+  const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
+  applyTheme(nextTheme);
+  void persistSettings({ theme: nextTheme }).catch((error) => {
+    console.error(error);
+  });
 }
 
 export function openServerSettingsPanel(serverId) {
   const modal = createModal({
     title: 'Server settings',
-    body: `<p>Manage server <strong>${serverId}</strong> (coming soon)</p>`
+    body: `<p>Manage server <strong>${serverId}</strong>. Channel configuration, invites, and moderation controls will appear here when you have the required permissions.</p>`
   });
   renderWatermark(modal.content);
 }
 
 export function openProfileSettings() {
-  const user = getCurrentUser();
-  const modal = createModal({
-    title: 'Profile',
-    body: `
-      <label for="profile-display">Display name</label>
-      <input id="profile-display" value="${user?.displayName || ''}" />
-      <label for="profile-username">Username</label>
-      <input id="profile-username" value="${user?.profile?.username || ''}" />
-      <label><input type="checkbox" id="profile-notifications" ${user?.profile?.settings?.notifications ? 'checked' : ''}/> Enable notifications</label>
-      <label><input type="checkbox" id="profile-lock" ${user?.profile?.settings?.lockOnLogout ? 'checked' : ''}/> Lock account on logout</label>
-    `,
-    actions: [
-      { label: 'Cancel', onSelect: () => {} },
-      { label: 'Save', onSelect: () => saveProfile(modal.root) }
-    ]
-  });
-  renderWatermark(modal.content);
+  openSettingsPanel('profile');
 }
 
-async function saveProfile(root) {
-  const displayName = root.querySelector('#profile-display').value;
-  const username = root.querySelector('#profile-username').value;
-  const notifications = root.querySelector('#profile-notifications').checked;
-  const lockOnLogout = root.querySelector('#profile-lock').checked;
-  try {
-    await updateDisplayName(displayName);
-    await updateUsername(username);
-    await updateSettings({ theme: currentTheme, notifications, lockOnLogout });
-    showToast('Profile saved');
-  } catch (error) {
-    console.error(error);
-    showToast('Unable to save profile');
-    return false;
+export function openSettingsPanel(defaultSection = 'profile') {
+  const user = getCurrentUser();
+  const preferences = {
+    theme: user?.profile?.settings?.theme ?? currentTheme,
+    notifications: user?.profile?.settings?.notifications ?? true,
+    lockOnLogout: user?.profile?.settings?.lockOnLogout ?? false,
+    desktop: user?.profile?.settings?.desktop ?? false,
+    muteMentions: user?.profile?.settings?.muteMentions ?? false,
+    pushMentionsOnly: user?.profile?.settings?.pushMentionsOnly ?? false,
+    allowFriendRequests: user?.profile?.settings?.allowFriendRequests ?? true
+  };
+  applyTheme(preferences.theme);
+
+  const modal = createModal({
+    title: 'User settings',
+    body: `
+      <div class="settings-panel">
+        <nav class="settings-nav" role="tablist" aria-label="Settings categories">
+          <button role="tab" data-section="profile">Profile</button>
+          <button role="tab" data-section="appearance">Appearance</button>
+          <button role="tab" data-section="notifications">Notifications</button>
+          <button role="tab" data-section="security">Security</button>
+          <button role="tab" data-section="about">About</button>
+        </nav>
+        <section class="settings-sections">
+          <form class="settings-section" data-section="profile" aria-label="Profile settings">
+            <h3>Profile</h3>
+            <p>Update how other people see you across StaticQuasar Chat.</p>
+            <label class="settings-field">
+              <span>Display name</span>
+              <input id="settings-display" type="text" maxlength="64" value="${user?.displayName ?? ''}" />
+            </label>
+            <label class="settings-field">
+              <span>Username</span>
+              <input id="settings-username" type="text" maxlength="32" value="${user?.profile?.username ?? ''}" />
+            </label>
+            <div class="settings-row">
+              <button type="button" id="settings-avatar">Upload avatar</button>
+              <button type="submit" class="primary">Save profile</button>
+            </div>
+          </form>
+
+          <form class="settings-section" data-section="appearance" aria-label="Appearance settings">
+            <h3>Appearance</h3>
+            <p>Pick between the classic Discord-inspired theme and a clean light look.</p>
+            <fieldset class="settings-fieldset">
+              <legend>Theme preference</legend>
+              <label><input type="radio" name="settings-theme" value="dark" ${preferences.theme === 'dark' ? 'checked' : ''}/> Dark (StaticQuasar default)</label>
+              <label><input type="radio" name="settings-theme" value="light" ${preferences.theme === 'light' ? 'checked' : ''}/> Light</label>
+            </fieldset>
+            <div class="settings-row">
+              <button type="button" id="settings-preview-dark">Preview dark</button>
+              <button type="button" id="settings-preview-light">Preview light</button>
+              <button type="submit" class="primary">Apply appearance</button>
+            </div>
+          </form>
+
+          <form class="settings-section" data-section="notifications" aria-label="Notification settings">
+            <h3>Notifications</h3>
+            <p>Control which alerts reach you in-app and on desktop.</p>
+            <label class="settings-field checkbox">
+              <input id="settings-notifications" type="checkbox" ${preferences.notifications ? 'checked' : ''}/>
+              <span>Enable in-app toasts</span>
+            </label>
+            <label class="settings-field checkbox">
+              <input id="settings-desktop" type="checkbox" ${preferences.desktop ? 'checked' : ''}/>
+              <span>Desktop push (requires enabling FCM)</span>
+            </label>
+            <label class="settings-field checkbox">
+              <input id="settings-mentions" type="checkbox" ${preferences.muteMentions ? 'checked' : ''}/>
+              <span>Mute @mention sounds</span>
+            </label>
+            <label class="settings-field checkbox">
+              <input id="settings-push-mentions" type="checkbox" ${preferences.pushMentionsOnly ? 'checked' : ''}/>
+              <span>Push notifications for mentions only</span>
+            </label>
+            <label class="settings-field checkbox">
+              <input id="settings-friends" type="checkbox" ${preferences.allowFriendRequests ? 'checked' : ''}/>
+              <span>Allow new friend requests</span>
+            </label>
+            <div class="settings-row">
+              <button type="submit" class="primary">Save notification preferences</button>
+            </div>
+          </form>
+
+          <form class="settings-section" data-section="security" aria-label="Security settings">
+            <h3>Security</h3>
+            <p>Keep your account and sessions safe.</p>
+            <label class="settings-field checkbox">
+              <input id="settings-lock" type="checkbox" ${preferences.lockOnLogout ? 'checked' : ''}/>
+              <span>Require password on logout</span>
+            </label>
+            <div class="settings-row">
+              <button type="button" id="settings-reset-password">Reset password</button>
+              <button type="button" id="settings-logout" class="danger">Log out</button>
+            </div>
+          </form>
+
+          <section class="settings-section" data-section="about" aria-label="About StaticQuasar Chat">
+            <h3>About StaticQuasar Chat</h3>
+            <p>Made by StaticQuasar931. A lightweight Discord-style client backed by Firebase Realtime Database.</p>
+            <ul class="settings-list">
+              <li>Hotkeys: Ctrl+K for quick switcher, Ctrl+1–9 to jump chats, Ctrl+Shift+Arrows for servers.</li>
+              <li>Supports servers, channels, DMs, group chats, reactions, reports, and soft deletes.</li>
+              <li>Theme toggle and accessibility features keep things comfortable and inclusive.</li>
+            </ul>
+            <div id="settings-watermark"></div>
+          </section>
+        </section>
+      </div>
+    `,
+    actions: [
+      { label: 'Close', onSelect: () => {} }
+    ]
+  });
+
+  setupSettingsInteractions(modal.content, preferences, defaultSection);
+}
+
+function setupSettingsInteractions(container, preferences, defaultSection) {
+  const tabs = Array.from(container.querySelectorAll('.settings-nav button'));
+  const sections = Array.from(container.querySelectorAll('.settings-section'));
+
+  function activate(sectionId) {
+    tabs.forEach((tab) => {
+      const isActive = tab.dataset.section === sectionId;
+      tab.classList.toggle('active', isActive);
+      tab.setAttribute('aria-selected', String(isActive));
+      tab.setAttribute('tabindex', isActive ? '0' : '-1');
+    });
+    sections.forEach((section) => {
+      section.toggleAttribute('hidden', section.dataset.section !== sectionId);
+    });
   }
+
+  tabs.forEach((tab) => {
+    tab.addEventListener('click', () => activate(tab.dataset.section || defaultSection));
+    tab.addEventListener('keydown', (event) => {
+      const index = tabs.indexOf(tab);
+      if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+        event.preventDefault();
+        const next = tabs[(index + 1) % tabs.length];
+        next.focus();
+        activate(next.dataset.section || defaultSection);
+      } else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+        event.preventDefault();
+        const prev = tabs[(index - 1 + tabs.length) % tabs.length];
+        prev.focus();
+        activate(prev.dataset.section || defaultSection);
+      }
+    });
+  });
+
+  activate(defaultSection);
+
+  const watermarkHost = container.querySelector('#settings-watermark');
+  if (watermarkHost) {
+    renderWatermark(watermarkHost);
+  }
+
+  const profileForm = container.querySelector('[data-section="profile"]');
+  profileForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const displayName = profileForm.querySelector('#settings-display').value.trim();
+    const username = profileForm.querySelector('#settings-username').value.trim();
+    try {
+      await updateDisplayName(displayName);
+      await updateUsername(username);
+      showToast('Profile updated');
+    } catch (error) {
+      console.error(error);
+      showToast('Could not update profile');
+    }
+  });
+
+  const avatarButton = container.querySelector('#settings-avatar');
+  avatarButton?.addEventListener('click', () => {
+    showToast('Avatar uploads are coming soon. Use the profile image uploader in chats for now.');
+  });
+
+  const appearanceForm = container.querySelector('[data-section="appearance"]');
+  appearanceForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const choice = appearanceForm.querySelector('input[name="settings-theme"]:checked');
+    if (!choice) return;
+    preferences.theme = choice.value;
+    applyTheme(choice.value);
+    try {
+      await persistSettings({ ...preferences, theme: choice.value });
+      showToast(`Theme switched to ${choice.value}`);
+    } catch (error) {
+      console.error(error);
+      showToast('Unable to update theme');
+    }
+  });
+
+  appearanceForm?.querySelector('#settings-preview-dark')?.addEventListener('click', () => {
+    applyTheme('dark');
+    const radio = appearanceForm.querySelector('input[value="dark"]');
+    if (radio) radio.checked = true;
+  });
+  appearanceForm?.querySelector('#settings-preview-light')?.addEventListener('click', () => {
+    applyTheme('light');
+    const radio = appearanceForm.querySelector('input[value="light"]');
+    if (radio) radio.checked = true;
+  });
+
+  const notificationForm = container.querySelector('[data-section="notifications"]');
+  notificationForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const notifications = notificationForm.querySelector('#settings-notifications').checked;
+    const desktop = notificationForm.querySelector('#settings-desktop').checked;
+    const muteMentions = notificationForm.querySelector('#settings-mentions').checked;
+    const pushMentionsOnly = notificationForm.querySelector('#settings-push-mentions').checked;
+    const allowFriendRequests = notificationForm.querySelector('#settings-friends').checked;
+    preferences.notifications = notifications;
+    preferences.desktop = desktop;
+    preferences.muteMentions = muteMentions;
+    preferences.pushMentionsOnly = pushMentionsOnly;
+    preferences.allowFriendRequests = allowFriendRequests;
+    try {
+      await persistSettings({ ...preferences });
+      showToast('Notification preferences saved');
+    } catch (error) {
+      console.error(error);
+      showToast('Could not update notifications');
+    }
+  });
+
+  const securityForm = container.querySelector('[data-section="security"]');
+  const lockToggle = securityForm?.querySelector('#settings-lock');
+  lockToggle?.addEventListener('change', async () => {
+    preferences.lockOnLogout = !!lockToggle.checked;
+    await persistSettings({ ...preferences });
+    showToast(lockToggle.checked ? 'Logout lock enabled' : 'Logout lock disabled');
+  });
+
+  securityForm?.querySelector('#settings-reset-password')?.addEventListener('click', () => {
+    showToast('Use the “Forgot password” link on the sign-in dialog to reset.');
+  });
+
+  securityForm?.querySelector('#settings-logout')?.addEventListener('click', async () => {
+    await logout();
+    showToast('Signed out');
+  });
+}
+
+function applyTheme(theme) {
+  currentTheme = theme;
+  setTheme(theme);
+}
+
+async function persistSettings(values) {
+  const user = getCurrentUser();
+  if (!user) return;
+  const existing = user.profile?.settings ?? {};
+  await updateSettings({ ...existing, ...values });
 }
 
 export function getTheme() {

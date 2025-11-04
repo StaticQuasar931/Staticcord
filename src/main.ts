@@ -5,7 +5,7 @@ import { initServers, configureHeaderForServer, watchMembers } from './features/
 import { initChannels, subscribeToServerChannels } from './features/channels.ts';
 import { initMessages } from './features/messages.ts';
 import { initEmojiPicker } from './features/emoji.ts';
-import { initTheme, toggleTheme, openProfileSettings } from './features/settings.ts';
+import { initTheme, toggleTheme, openProfileSettings, openSettingsPanel } from './features/settings.ts';
 import { enqueueUpload, isUploading } from './features/uploads.ts';
 import { initNotifications } from './features/notifications.ts';
 import { restoreFromHash, subscribe, getState } from './router.ts';
@@ -18,7 +18,8 @@ initSession();
 initTheme();
 initLayout({
   onThemeToggle: () => toggleTheme(),
-  onUploadClick: (file) => handleUpload(file)
+  onUploadClick: (file) => handleUpload(file),
+  onOpenSettings: () => openSettingsPanel()
 });
 initServers();
 initChannels();

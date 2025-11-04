@@ -13,30 +13,51 @@ const emojiButton = document.getElementById('emoji-button');
 const uploadButton = document.getElementById('upload-button');
 const fileInput = document.getElementById('file-input');
 
-let themeToggleButton;
+let themeToggleButton = null;
+let settingsButton = null;
+let openSettingsCallback;
+let themeToggleCallback;
 
-export function initLayout({ onThemeToggle, onUploadClick }) {
+export function initLayout(options = {}) {
+  const { onThemeToggle, onUploadClick, onOpenSettings } = options;
   registerHotkeys({
     'Ctrl+K': () => openQuickSwitcher(),
     Escape: () => closePopovers()
   });
 
-  themeToggleButton = document.createElement('button');
-  themeToggleButton.textContent = 'Theme';
-  themeToggleButton.addEventListener('click', () => {
-    onThemeToggle?.();
-  });
-  themeToggleButton.setAttribute('aria-label', 'Toggle theme');
+  themeToggleCallback = onThemeToggle;
+  openSettingsCallback = onOpenSettings;
+
+  if (!themeToggleButton) {
+    themeToggleButton = document.createElement('button');
+    themeToggleButton.className = 'header-action';
+    themeToggleButton.setAttribute('aria-label', 'Toggle theme');
+    themeToggleButton.addEventListener('click', () => themeToggleCallback?.());
+    const appliedTheme = document.documentElement.dataset.theme || 'dark';
+    themeToggleButton.textContent = appliedTheme === 'light' ? 'Light theme' : 'Dark theme';
+    themeToggleButton.setAttribute('data-theme-state', appliedTheme);
+  }
+
+  if (!settingsButton) {
+    settingsButton = document.createElement('button');
+    settingsButton.className = 'header-action';
+    settingsButton.textContent = 'User Settings';
+    settingsButton.setAttribute('aria-label', 'Open user settings');
+    settingsButton.addEventListener('click', () => openSettingsCallback?.());
+  }
+
+  headerActions?.appendChild(settingsButton);
   headerActions?.appendChild(themeToggleButton);
 
   uploadButton?.addEventListener('click', () => {
     fileInput?.click();
   });
   fileInput?.addEventListener('change', (event) => {
-    const file = event.target.files?.[0];
+    const input = event.target;
+    const file = input.files?.[0];
     if (!file) return;
     onUploadClick?.(file);
-    fileInput.value = '';
+    input.value = '';
   });
 
   emojiButton?.setAttribute('aria-haspopup', 'dialog');
@@ -206,10 +227,12 @@ export function setHeader(title, actions = []) {
     actions.forEach((action) => {
       const button = document.createElement('button');
       button.textContent = action.label;
+      button.className = 'header-action';
       button.addEventListener('click', action.onSelect);
       button.setAttribute('aria-label', action.aria || action.label);
       headerActions.appendChild(button);
     });
+    if (settingsButton) headerActions.appendChild(settingsButton);
     if (themeToggleButton) headerActions.appendChild(themeToggleButton);
   }
 }
@@ -408,7 +431,12 @@ export function onComposerInput(handler) {
 
 export function setTheme(theme) {
   document.documentElement.dataset.theme = theme;
-  document.querySelector('meta[name="theme-color"]').setAttribute('content', theme === 'light' ? '#ffffff' : '#2b2d31');
+  const meta = document.querySelector('meta[name="theme-color"]');
+  meta?.setAttribute('content', theme === 'light' ? '#ffffff' : '#2b2d31');
+  if (themeToggleButton) {
+    themeToggleButton.textContent = theme === 'light' ? 'Light theme' : 'Dark theme';
+    themeToggleButton.setAttribute('data-theme-state', theme);
+  }
 }
 
 export function showSplash() {

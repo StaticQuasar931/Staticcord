@@ -1,13 +1,13 @@
 const config = {
   firebase: {
-    apiKey: 'AIzaSyDG-YAOIURzxvjyL9vyqfXHB-OrkzSAO3Q',
-    authDomain: 'staticquasar931-discord.firebaseapp.com',
-    databaseURL: 'https://staticquasar931-discord-default-rtdb.firebaseio.com',
-    projectId: 'staticquasar931-discord',
-    storageBucket: 'staticquasar931-discord.firebasestorage.app',
-    messagingSenderId: '397220487467',
-    appId: '1:397220487467:web:d58f28b0c7fb103540656e',
-    measurementId: 'G-9VSBB75DHL'
+    apiKey: 'AIzaSyDvWeBouqx0xaODaQUPbtIXRgoPV0m3-jQ',
+    authDomain: 'staticcord-48db3.firebaseapp.com',
+    databaseURL: 'https://staticcord-48db3-default-rtdb.firebaseio.com',
+    projectId: 'staticcord-48db3',
+    storageBucket: 'staticcord-48db3.firebasestorage.app',
+    messagingSenderId: '815263541941',
+    appId: '1:815263541941:web:b9339fbd49b3ebd5a0acfc',
+    measurementId: 'G-Z41Q7LBGHM'
   },
   FEATURES: {
     presence: true,
