@@ -1,6 +1,6 @@
 import { initFirebase, loginWithGoogle as loginGoogleProvider, loginWithEmail as loginEmailProvider, registerWithEmail as registerEmailProvider } from './auth/auth.ts';
 import { initSession, onSession } from './auth/session.ts';
-import { initLayout, setHeader, getComposerValue } from './ui/layout.ts';
+import { initLayout, setHeader, getComposerValue, focusSearch } from './ui/layout.ts';
 import { initServers, configureHeaderForServer, watchMembers } from './features/servers.ts';
 import { initChannels, subscribeToServerChannels } from './features/channels.ts';
 import { initMessages } from './features/messages.ts';
@@ -138,6 +138,10 @@ window.addEventListener('keydown', (event) => {
         event.preventDefault();
       }
     }
+  }
+  if (event.key === '/' && !event.ctrlKey && !event.metaKey && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+    event.preventDefault();
+    focusSearch();
   }
   if (event.ctrlKey && event.shiftKey) {
     if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {

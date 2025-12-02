@@ -1,5 +1,5 @@
 import { listenList, addData, updateData, removeData } from '../data/db.ts';
-import { renderMessages, showTypingIndicator, clearTypingIndicator, setComposerState, onComposerSubmit, onComposerInput, getComposerValue, setComposerValue } from '../ui/layout.ts';
+import { renderMessages, renderPinnedMessages, showTypingIndicator, clearTypingIndicator, setComposerState, onComposerSubmit, onComposerInput, getComposerValue, setComposerValue, triggerQuasarstorm } from '../ui/layout.ts';
 import { subscribe, getState, navigateTo } from '../router.ts';
 import { getCurrentUser } from '../auth/session.ts';
 import { enforceMessageLimit, sanitizeMarkdown } from '../utils/validate.ts';
@@ -9,12 +9,17 @@ import { startTyping, stopTyping, listenTyping } from '../data/typing.ts';
 import { formatTimestamp } from '../utils/time.ts';
 import { openMenu } from '../ui/menu.ts';
 import { detectEmbeds } from './embeds.ts';
+import { fetchDisplayNames } from '../data/users.ts';
 
 let unsubscribeMessages;
 let unsubscribeTyping;
+let unsubscribePins;
 let scope = null;
 let messages = [];
 let pendingAttachment = null;
+const pinnedIds = new Set();
+const pinRecords = {};
+let searchQuery = '';
 
 export function initMessages() {
   onComposerSubmit(handleSend);
@@ -44,6 +49,16 @@ export function initMessages() {
     reportMessage(messageId);
   });
 
+  document.addEventListener('sq:pin-message', (event) => {
+    const { messageId, pinned } = event.detail || {};
+    togglePin(messageId, pinned);
+  });
+
+  document.addEventListener('sq:search', (event) => {
+    searchQuery = (event.detail?.query || '').trim();
+    scheduleRender();
+  });
+
   document.getElementById('message-list')?.addEventListener('contextmenu', (event) => {
     const messageEl = event.target.closest('.message');
     if (!messageEl) return;
@@ -69,57 +84,115 @@ function resolveScope(state) {
 function subscribeToScope(target) {
   if (unsubscribeMessages) unsubscribeMessages();
   if (unsubscribeTyping) unsubscribeTyping();
+  if (unsubscribePins) unsubscribePins();
   messages = [];
   renderMessages([]);
   setComposerValue('');
   setComposerState({ disabled: false, placeholder: 'Message' });
   pendingAttachment = null;
+  pinnedIds.clear();
+  Object.keys(pinRecords).forEach((key) => delete pinRecords[key]);
+  renderPinnedMessages([]);
 
   unsubscribeMessages = listenList(target.path, {
     added: (id, value) => {
       messages.push({ id, ...value });
-      render();
+      scheduleRender();
     },
     changed: (id, value) => {
       const index = messages.findIndex((message) => message.id === id);
       if (index > -1) {
         messages[index] = { ...messages[index], ...value };
-        render();
+        scheduleRender();
       }
     },
     removed: (id) => {
       messages = messages.filter((message) => message.id !== id);
-      render();
+      scheduleRender();
     }
   });
 
   if (config.FEATURES.typing) {
     unsubscribeTyping = listenTyping(target.type, target.id, handleTypingUsers);
   }
+
+  subscribePins(target);
 }
 
-function render() {
-  const user = getCurrentUser();
-  const rendered = messages
-    .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
+function subscribePins(target) {
+  const path = resolvePinsPath(target);
+  if (!path) {
+    renderPinnedMessages([]);
+    return;
+  }
+  unsubscribePins = listenList(path, {
+    added: (id, value) => {
+      pinnedIds.add(id);
+      pinRecords[id] = value || {};
+      scheduleRender();
+    },
+    changed: (id, value) => {
+      pinnedIds.add(id);
+      pinRecords[id] = value || {};
+      syncPinnedMeta();
+    },
+    removed: (id) => {
+      pinnedIds.delete(id);
+      delete pinRecords[id];
+      syncPinnedMeta();
+      scheduleRender();
+    }
+  });
+}
+
+function scheduleRender() {
+  render().catch((error) => console.error('render error', error));
+}
+
+async function render() {
+  messages.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  const filtered = messages
     .slice(-200)
-    .map((message) => {
-      const embeds = detectEmbeds(message.content || '').concat(message.embeds || []);
-      return {
-        id: message.id,
-        authorId: message.authorId,
-        authorName: message.authorName || message.authorDisplayName || 'Member',
-        authorAvatar: message.authorAvatar,
-        timestamp: formatTimestamp(message.createdAt),
-        contentHtml: message.softDeleted ? '<em>This message was removed</em>' : sanitizeMarkdown(message.content || ''),
-        edited: !!message.editedAt,
-        softDeleted: !!message.softDeleted,
-        reactions: message.reactions ? Object.entries(message.reactions).map(([emoji, users]) => ({ emoji, count: Object.keys(users || {}).length })) : [],
-        attachments: message.attachments,
-        embeds
-      };
+    .filter((message) => {
+      if (!searchQuery) return true;
+      return (message.content || '').toLowerCase().includes(searchQuery.toLowerCase());
     });
+
+  const allReactionUids = new Set();
+  filtered.forEach((message) => {
+    Object.values(message.reactions || {}).forEach((users) => {
+      Object.keys(users || {}).forEach((uid) => allReactionUids.add(uid));
+    });
+  });
+  const reactionLookup = allReactionUids.size ? await fetchDisplayNames(Array.from(allReactionUids)) : {};
+
+  const rendered = filtered.map((message) => {
+    const embeds = detectEmbeds(message.content || '').concat(message.embeds || []);
+    const contentHtml = message.softDeleted
+      ? '<em>This message was removed</em>'
+      : sanitizeMarkdown(message.content || '', { highlight: searchQuery });
+    return {
+      id: message.id,
+      authorId: message.authorId,
+      authorName: message.authorName || message.authorDisplayName || 'Member',
+      authorAvatar: message.authorAvatar,
+      timestamp: formatTimestamp(message.createdAt),
+      contentHtml,
+      edited: !!message.editedAt,
+      softDeleted: !!message.softDeleted,
+      pinned: pinnedIds.has(message.id),
+      reactions: message.reactions
+        ? Object.entries(message.reactions).map(([emoji, users]) => {
+            const names = Object.keys(users || {}).map((uid) => reactionLookup[uid] || 'Member');
+            return { emoji, count: names.length, tooltip: names.join('\n') || null };
+          })
+        : [],
+      attachments: message.attachments,
+      embeds
+    };
+  });
   renderMessages(rendered);
+  syncPinnedMeta();
 }
 
 async function handleSend(text) {
@@ -146,6 +219,9 @@ async function handleSend(text) {
     setComposerValue('');
     pendingAttachment = null;
     handleTypingStop();
+    if (content.includes(':quasarstorm:')) {
+      triggerQuasarstorm();
+    }
   } catch (error) {
     console.error(error);
     showToast('Failed to send message');
@@ -166,11 +242,15 @@ function handleTypingStop() {
   stopTyping();
 }
 
-function handleTypingUsers(uids) {
+async function handleTypingUsers(uids) {
   const user = getCurrentUser();
   const others = uids.filter((uid) => uid !== user?.uid);
   if (others.length) {
-    showTypingIndicator(`${others.length === 1 ? 'Someone' : `${others.length} people`} are typing…`);
+    const lookup = await fetchDisplayNames([others[0]]);
+    const display = lookup[others[0]] || 'Static';
+    const base = display.split(' ')[0] || 'Static';
+    const message = others.length === 1 ? `${base} is typing...` : `${base} and ${others.length - 1} others are typing...`;
+    showTypingIndicator(message);
   } else {
     clearTypingIndicator();
   }
@@ -233,6 +313,7 @@ function openMessageMenu(x, y, messageId) {
   if (user && message.authorId === user.uid) {
     items.push({ label: 'Edit', onSelect: () => promptEdit(message) });
   }
+  items.push({ label: pinnedIds.has(messageId) ? 'Unpin' : 'Pin', onSelect: () => togglePin(messageId, pinnedIds.has(messageId)) });
   items.push({ label: 'Soft delete', onSelect: () => softDelete(messageId) });
   items.push({ label: 'Report', onSelect: () => reportMessage(messageId) });
   openMenu(x, y, items);
@@ -252,4 +333,52 @@ async function reportMessage(messageId) {
 
 export function getMessages() {
   return messages;
+}
+
+function resolvePinsPath(target) {
+  if (!target) return null;
+  if (target.type === 'channel') return `/channelPins/${target.serverId}/${target.id}`;
+  if (target.type === 'dm') return `/dmPins/${target.id}`;
+  if (target.type === 'group') return `/groupPins/${target.id}`;
+  return null;
+}
+
+function syncPinnedMeta() {
+  const entries = Array.from(pinnedIds)
+    .map((id) => {
+      const message = messages.find((item) => item.id === id);
+      if (!message) return null;
+      const record = pinRecords[id] || {};
+      const snippet = (message.content || '').replace(/\s+/g, ' ').slice(0, 60) || '[attachment]';
+      return {
+        id,
+        author: message.authorName || 'Member',
+        snippet,
+        pinnedAt: formatTimestamp(record.pinnedAt || Date.now())
+      };
+    })
+    .filter(Boolean);
+  renderPinnedMessages(entries);
+}
+
+async function togglePin(messageId, currentlyPinned) {
+  const user = getCurrentUser();
+  if (!user || !scope) return;
+  const path = resolvePinsPath(scope);
+  if (!path) return;
+  try {
+    if (currentlyPinned) {
+      await removeData(`${path}/${messageId}`);
+      showToast('Message unpinned');
+    } else {
+      await updateData(`${path}/${messageId}`, {
+        pinnedBy: user.uid,
+        pinnedAt: Date.now()
+      });
+      showToast('Message pinned');
+    }
+  } catch (error) {
+    console.error(error);
+    showToast('Unable to update pin');
+  }
 }

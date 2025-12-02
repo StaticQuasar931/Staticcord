@@ -84,6 +84,38 @@
       }
     },
 
+    "channelPins": {
+      "$serverId": {
+        "$channelId": {
+          ".read": "auth != null && root.child('servers/' + $serverId + '/members/' + auth.uid).exists()",
+          "$messageId": {
+            ".write": "auth != null && root.child('servers/' + $serverId + '/members/' + auth.uid).exists()",
+            ".validate": "newData.hasChildren(['pinnedBy','pinnedAt']) && newData.child('pinnedBy').val() === auth.uid && newData.child('pinnedAt').isNumber()"
+          }
+        }
+      }
+    },
+
+    "dmPins": {
+      "$dmId": {
+        ".read": "auth != null && root.child('dms/' + $dmId + '/memberIds/' + auth.uid).val() === true",
+        "$messageId": {
+          ".write": "auth != null && root.child('dms/' + $dmId + '/memberIds/' + auth.uid).val() === true",
+          ".validate": "newData.hasChildren(['pinnedBy','pinnedAt']) && newData.child('pinnedBy').val() === auth.uid && newData.child('pinnedAt').isNumber()"
+        }
+      }
+    },
+
+    "groupPins": {
+      "$groupId": {
+        ".read": "auth != null && root.child('groupDms/' + $groupId + '/memberIds/' + auth.uid).val() === true",
+        "$messageId": {
+          ".write": "auth != null && root.child('groupDms/' + $groupId + '/memberIds/' + auth.uid).val() === true",
+          ".validate": "newData.hasChildren(['pinnedBy','pinnedAt']) && newData.child('pinnedBy').val() === auth.uid && newData.child('pinnedAt').isNumber()"
+        }
+      }
+    },
+
     "presence": {
       "$uid": {
         ".read": "auth != null",

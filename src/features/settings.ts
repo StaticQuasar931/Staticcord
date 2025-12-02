@@ -1,5 +1,5 @@
 import { createModal } from '../ui/modal.ts';
-import { renderWatermark, setTheme } from '../ui/layout.ts';
+import { renderWatermark, setTheme, setDensity } from '../ui/layout.ts';
 import { getCurrentUser, updateDisplayName, updateUsername, updateSettings } from '../auth/session.ts';
 import { logout } from '../auth/auth.ts';
 import config from '../config.ts';
@@ -12,8 +12,14 @@ export function initTheme() {
 }
 
 export function toggleTheme() {
-  const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
+  const order = ['dark', 'static', 'light', 'contrast'];
+  const currentIndex = order.indexOf(currentTheme);
+  const nextTheme = order[(currentIndex + 1) % order.length];
   applyTheme(nextTheme);
+  if (nextTheme === 'contrast') {
+    document.body.dataset.highContrast = 'true';
+    setDensity('compact');
+  }
   void persistSettings({ theme: nextTheme }).catch((error) => {
     console.error(error);
   });
@@ -40,9 +46,13 @@ export function openSettingsPanel(defaultSection = 'profile') {
     desktop: user?.profile?.settings?.desktop ?? false,
     muteMentions: user?.profile?.settings?.muteMentions ?? false,
     pushMentionsOnly: user?.profile?.settings?.pushMentionsOnly ?? false,
-    allowFriendRequests: user?.profile?.settings?.allowFriendRequests ?? true
+    allowFriendRequests: user?.profile?.settings?.allowFriendRequests ?? true,
+    density: user?.profile?.settings?.density ?? 'cozy',
+    highContrast: user?.profile?.settings?.highContrast ?? false
   };
   applyTheme(preferences.theme);
+  setDensity(preferences.density);
+  document.body.dataset.highContrast = String(!!preferences.highContrast);
 
   const modal = createModal({
     title: 'User settings',
@@ -75,15 +85,27 @@ export function openSettingsPanel(defaultSection = 'profile') {
 
           <form class="settings-section" data-section="appearance" aria-label="Appearance settings">
             <h3>Appearance</h3>
-            <p>Pick between the classic Discord-inspired theme and a clean light look.</p>
+            <p>Pick a theme and layout that matches how you like to read chats.</p>
             <fieldset class="settings-fieldset">
               <legend>Theme preference</legend>
-              <label><input type="radio" name="settings-theme" value="dark" ${preferences.theme === 'dark' ? 'checked' : ''}/> Dark (StaticQuasar default)</label>
-              <label><input type="radio" name="settings-theme" value="light" ${preferences.theme === 'light' ? 'checked' : ''}/> Light</label>
+              <label><input type="radio" name="settings-theme" value="dark" ${preferences.theme === 'dark' ? 'checked' : ''}/> Discord Dark</label>
+              <label><input type="radio" name="settings-theme" value="static" ${preferences.theme === 'static' ? 'checked' : ''}/> Static Mode (purple glow)</label>
+              <label><input type="radio" name="settings-theme" value="light" ${preferences.theme === 'light' ? 'checked' : ''}/> Clean Light</label>
+              <label><input type="radio" name="settings-theme" value="contrast" ${preferences.theme === 'contrast' ? 'checked' : ''}/> High Contrast</label>
+            </fieldset>
+            <label class="settings-field checkbox">
+              <input id="settings-high-contrast" type="checkbox" ${preferences.highContrast ? 'checked' : ''} />
+              <span>Boost contrast for text and UI accents</span>
+            </label>
+            <fieldset class="settings-fieldset">
+              <legend>Message density</legend>
+              <label><input type="radio" name="settings-density" value="cozy" ${preferences.density === 'cozy' ? 'checked' : ''}/> Cozy</label>
+              <label><input type="radio" name="settings-density" value="compact" ${preferences.density === 'compact' ? 'checked' : ''}/> Compact</label>
             </fieldset>
             <div class="settings-row">
               <button type="button" id="settings-preview-dark">Preview dark</button>
               <button type="button" id="settings-preview-light">Preview light</button>
+              <button type="button" id="settings-preview-static">Preview static</button>
               <button type="submit" class="primary">Apply appearance</button>
             </div>
           </form>
@@ -215,12 +237,18 @@ function setupSettingsInteractions(container, preferences, defaultSection) {
   appearanceForm?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const choice = appearanceForm.querySelector('input[name="settings-theme"]:checked');
+    const densityChoice = appearanceForm.querySelector('input[name="settings-density"]:checked');
+    const highContrastToggle = appearanceForm.querySelector('#settings-high-contrast');
     if (!choice) return;
     preferences.theme = choice.value;
+    preferences.density = densityChoice?.value || 'cozy';
+    preferences.highContrast = !!highContrastToggle?.checked;
     applyTheme(choice.value);
+    setDensity(preferences.density);
+    document.body.dataset.highContrast = String(preferences.highContrast);
     try {
-      await persistSettings({ ...preferences, theme: choice.value });
-      showToast(`Theme switched to ${choice.value}`);
+      await persistSettings({ ...preferences });
+      showToast(`Appearance updated (${choice.value}, ${preferences.density})`);
     } catch (error) {
       console.error(error);
       showToast('Unable to update theme');
@@ -236,6 +264,27 @@ function setupSettingsInteractions(container, preferences, defaultSection) {
     applyTheme('light');
     const radio = appearanceForm.querySelector('input[value="light"]');
     if (radio) radio.checked = true;
+  });
+  appearanceForm?.querySelector('#settings-preview-static')?.addEventListener('click', () => {
+    applyTheme('static');
+    const radio = appearanceForm.querySelector('input[value="static"]');
+    if (radio) radio.checked = true;
+  });
+
+  appearanceForm?.querySelector('#settings-high-contrast')?.addEventListener('change', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) return;
+    const checked = target.checked;
+    preferences.highContrast = checked;
+    document.body.dataset.highContrast = String(checked);
+  });
+
+  appearanceForm?.querySelectorAll('input[name="settings-density"]').forEach((input) => {
+    input.addEventListener('change', () => {
+      if (!(input instanceof HTMLInputElement)) return;
+      preferences.density = input.value;
+      setDensity(preferences.density);
+    });
   });
 
   const notificationForm = container.querySelector('[data-section="notifications"]');

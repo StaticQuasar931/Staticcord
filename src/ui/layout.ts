@@ -12,6 +12,8 @@ const sendButton = document.getElementById('send-button');
 const emojiButton = document.getElementById('emoji-button');
 const uploadButton = document.getElementById('upload-button');
 const fileInput = document.getElementById('file-input');
+const pinnedBar = document.getElementById('pinned-bar');
+const searchInput = document.getElementById('global-search');
 
 let themeToggleButton = null;
 let settingsButton = null;
@@ -22,8 +24,13 @@ export function initLayout(options = {}) {
   const { onThemeToggle, onUploadClick, onOpenSettings } = options;
   registerHotkeys({
     'Ctrl+K': () => openQuickSwitcher(),
+    'Ctrl+E': () => emojiButton?.click(),
     Escape: () => closePopovers()
   });
+
+  if (!document.body.dataset.density) {
+    document.body.dataset.density = 'cozy';
+  }
 
   themeToggleCallback = onThemeToggle;
   openSettingsCallback = onOpenSettings;
@@ -34,7 +41,7 @@ export function initLayout(options = {}) {
     themeToggleButton.setAttribute('aria-label', 'Toggle theme');
     themeToggleButton.addEventListener('click', () => themeToggleCallback?.());
     const appliedTheme = document.documentElement.dataset.theme || 'dark';
-    themeToggleButton.textContent = appliedTheme === 'light' ? 'Light theme' : 'Dark theme';
+    themeToggleButton.textContent = `${appliedTheme.charAt(0).toUpperCase() + appliedTheme.slice(1)} theme`;
     themeToggleButton.setAttribute('data-theme-state', appliedTheme);
   }
 
@@ -61,6 +68,12 @@ export function initLayout(options = {}) {
   });
 
   emojiButton?.setAttribute('aria-haspopup', 'dialog');
+
+  if (searchInput) {
+    searchInput.addEventListener('input', () => {
+      document.dispatchEvent(new CustomEvent('sq:search', { detail: { query: searchInput.value } }));
+    });
+  }
 }
 
 function closePopovers() {
@@ -77,8 +90,13 @@ export function renderServers(servers, activeId) {
   serversEl.innerHTML = '';
   const homeButton = document.createElement('button');
   homeButton.className = 'server-button';
-  homeButton.textContent = 'SQ';
-  homeButton.title = 'StaticQuasar Home';
+  const logo = document.createElement('img');
+  logo.src = 'https://cdn.jsdelivr.net/gh/StaticQuasar931/Images@main/icon.png';
+  logo.alt = 'StaticCord home';
+  logo.width = 40;
+  logo.height = 40;
+  homeButton.appendChild(logo);
+  homeButton.title = 'StaticCord home';
   homeButton.dataset.serverId = 'home';
   serversEl.appendChild(homeButton);
   servers.forEach((server, index) => {
@@ -270,9 +288,12 @@ export function renderMessages(rendered) {
     const row = document.createElement('div');
     row.className = 'message';
     row.dataset.id = message.id;
+    row.id = `message-${message.id}`;
     row.setAttribute('role', 'listitem');
+    row.classList.toggle('soft-deleted', !!message.softDeleted);
+    row.classList.toggle('is-soft-deleted', !!message.softDeleted);
+    row.classList.toggle('is-edited', !!message.edited);
     if (message.softDeleted) {
-      row.classList.add('soft-deleted');
       row.setAttribute('aria-label', 'Message removed');
     }
 
@@ -294,12 +315,6 @@ export function renderMessages(rendered) {
     timestamp.className = 'timestamp';
     timestamp.textContent = message.timestamp;
     meta.appendChild(timestamp);
-    if (message.edited) {
-      const edited = document.createElement('span');
-      edited.className = 'timestamp';
-      edited.textContent = '(edited)';
-      meta.appendChild(edited);
-    }
 
     const content = document.createElement('div');
     content.className = 'content';
@@ -339,6 +354,10 @@ export function renderMessages(rendered) {
         const pill = document.createElement('button');
         pill.className = 'reaction-pill';
         pill.textContent = `${reaction.emoji} ${reaction.count}`;
+        if (reaction.tooltip) {
+          pill.dataset.tooltip = reaction.tooltip;
+        }
+        pill.setAttribute('aria-label', reaction.tooltip || `React with ${reaction.emoji}`);
         pill.addEventListener('click', () => {
           document.dispatchEvent(new CustomEvent('sq:toggle-reaction', { detail: { messageId: message.id, emoji: reaction.emoji } }));
         });
@@ -362,6 +381,18 @@ export function renderMessages(rendered) {
       document.dispatchEvent(new CustomEvent('sq:emoji-picker', { detail: { messageId: message.id } }));
     });
     actions.appendChild(react);
+
+    const pin = document.createElement('button');
+    pin.textContent = message.pinned ? 'Unpin' : 'Pin';
+    pin.addEventListener('click', () => {
+      document.dispatchEvent(new CustomEvent('sq:pin-message', { detail: { messageId: message.id, pinned: message.pinned } }));
+    });
+    actions.appendChild(pin);
+
+    const jump = document.createElement('button');
+    jump.textContent = 'Jump';
+    jump.addEventListener('click', () => scrollToMessage(message.id));
+    actions.appendChild(jump);
 
     const report = document.createElement('button');
     report.textContent = 'Report';
@@ -398,6 +429,58 @@ export function clearTypingIndicator() {
   if (indicator) indicator.remove();
 }
 
+export function renderPinnedMessages(entries) {
+  if (!pinnedBar) return;
+  pinnedBar.innerHTML = '';
+  if (!entries.length) {
+    pinnedBar.hidden = true;
+    return;
+  }
+  const icon = document.createElement('span');
+  icon.textContent = '📌';
+  pinnedBar.appendChild(icon);
+  entries.forEach((entry) => {
+    const button = document.createElement('button');
+    button.textContent = `${entry.author}: ${entry.snippet}`;
+    button.title = `Pinned on ${entry.pinnedAt}`;
+    button.addEventListener('click', () => scrollToMessage(entry.id));
+    pinnedBar.appendChild(button);
+  });
+  pinnedBar.hidden = false;
+}
+
+export function scrollToMessage(messageId) {
+  const node = document.getElementById(`message-${messageId}`);
+  if (node) {
+    node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    node.classList.add('message-highlight');
+    setTimeout(() => node.classList.remove('message-highlight'), 1600);
+  }
+}
+
+export function triggerQuasarstorm() {
+  let overlay = document.querySelector('.quasarstorm-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.className = 'quasarstorm-overlay';
+    document.body.appendChild(overlay);
+    setTimeout(() => overlay?.remove(), 1800);
+  }
+  for (let i = 0; i < 24; i += 1) {
+    const particle = document.createElement('span');
+    particle.className = 'particle';
+    const x = Math.random() * window.innerWidth;
+    const y = Math.random() * window.innerHeight;
+    const dx = `${(Math.random() - 0.5) * 260}px`;
+    const dy = `${(Math.random() - 0.5) * 160}px`;
+    particle.style.left = `${x}px`;
+    particle.style.top = `${y}px`;
+    particle.style.setProperty('--dx', dx);
+    particle.style.setProperty('--dy', dy);
+    overlay.appendChild(particle);
+  }
+}
+
 export function setComposerState({ disabled, placeholder }) {
   if (composerInput) composerInput.disabled = !!disabled;
   if (sendButton) sendButton.disabled = !!disabled;
@@ -432,11 +515,22 @@ export function onComposerInput(handler) {
 export function setTheme(theme) {
   document.documentElement.dataset.theme = theme;
   const meta = document.querySelector('meta[name="theme-color"]');
-  meta?.setAttribute('content', theme === 'light' ? '#ffffff' : '#2b2d31');
+  const themeColor =
+    theme === 'light' ? '#ffffff' : theme === 'static' ? '#4d3df0' : theme === 'contrast' ? '#000000' : '#2b2d31';
+  meta?.setAttribute('content', themeColor);
   if (themeToggleButton) {
-    themeToggleButton.textContent = theme === 'light' ? 'Light theme' : 'Dark theme';
+    const label = theme.charAt(0).toUpperCase() + theme.slice(1);
+    themeToggleButton.textContent = `${label} theme`;
     themeToggleButton.setAttribute('data-theme-state', theme);
   }
+}
+
+export function setDensity(mode) {
+  document.body.dataset.density = mode;
+}
+
+export function focusSearch() {
+  searchInput?.focus();
 }
 
 export function showSplash() {

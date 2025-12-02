@@ -15,9 +15,13 @@
       <div id="channels" class="region" aria-label="Channels and Direct Messages" role="navigation"></div>
       <header id="header" role="banner">
         <div class="title" id="channel-title">Welcome to StaticQuasar Chat</div>
+        <div class="search" role="search">
+          <input id="global-search" type="search" placeholder="Search StaticCord" aria-label="Search chats" />
+        </div>
         <div class="actions" id="header-actions"></div>
       </header>
       <main id="main" role="main" aria-live="polite" aria-label="Message feed">
+        <div id="pinned-bar" aria-label="Pinned messages" hidden></div>
         <div id="message-list" role="list" aria-live="polite"></div>
       </main>
       <aside id="sidebar" role="complementary" aria-label="Members"></aside>
@@ -35,6 +39,7 @@
         <img src="https://cdn.jsdelivr.net/gh/StaticQuasar931/Images@main/icon.png" alt="StaticQuasar logo" width="96" height="96" />
         <p>StaticQuasar931 is preparing your chats…</p>
       </div>
+      <span class="splash-watermark">StaticCord © StaticQuasar931</span>
     </div>
     <script type="module" src="./src/main.ts"></script>
   </body>
